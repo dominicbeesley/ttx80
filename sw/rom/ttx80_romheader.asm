@@ -5,6 +5,7 @@
 		.include "ttx80_utils.inc"
 
 		.import 	cmdMode15
+		.import  cmdTTX80TEST
 
 
 
@@ -287,8 +288,11 @@ svc4_CMD_exit:	pla					; discard stacked Y
 
 
 tbl_commands:		.word	strMode15, cmdMode15-1, helpMode15
+			.word	strTTX80TEST, cmdTTX80TEST-1, 0
 			.word	0
 
 str_HELP_KEY	:= 	utils_name
 strMode15:		.byte	"MODE15", 0
 helpMode15:		.byte	"?", 0
+strTTX80TEST:		.byte	"TTX80TEST", 0
+

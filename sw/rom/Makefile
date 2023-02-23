@@ -30,6 +30,8 @@ $(BUILD)/%.rom: $(OBJS) $(NAME).cfg
 
 	echo "R.$(basename $(notdir $@)) FFFF8000 FFFF8000" >$@.inf
 
+ttx80.asm:testcard.mo15
+
 
 clean::
 	-rm $(BUILD)/*
