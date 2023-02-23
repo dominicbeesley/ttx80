@@ -1,0 +1,10 @@
+.PHONY:		all clean
+MLCa:=$(words $(MAKEFILE_LIST))
+MLCb:=$(shell echo "$(MLCa) - 1" | bc)
+CALLER_MAKE=$(realpath $(lastword $(wordlist 1,$(MLCb),$(MAKEFILE_LIST))))
+TOP:=$(realpath $(dir $(lastword $(MAKEFILE_LIST))))
+SCRIPTS:=$(TOP)/scripts
+RELDIR:=$(shell realpath --relative-to=$(TOP) $(shell dirname $(CALLER_MAKE)))
+BUILD=$(TOP)/BUILD/$(RELDIR)
+
+X:=$(shell mkdir -p $(BUILD))
