@@ -641,12 +641,6 @@ _BC9C1:			sta	VDU_G_WIN_L,X			; clear all windows
 			jsr	OSWRCH_NV			; and do VDU 24			
 
 
-			ldy	#$03				; Y=3
-			sty	VDU_QUEUE_8			; set as last parameter
-			iny					; increment Y
-			sty	VDU_QUEUE_6			; set parameters
-			dec	VDU_QUEUE_7			; 
-			dec	VDU_QUEUE_5			; 
 			lda	#$f7				; 
 			jsr	AND_VDU_STATUS			; clear bit 3 of &D0
 			ldx	VDU_MEM				; window area start address lo
