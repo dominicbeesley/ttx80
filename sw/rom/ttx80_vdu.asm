@@ -622,14 +622,31 @@ _BC9C1:			sta	VDU_G_WIN_L,X			; clear all windows
 			jsr	_LCA88				; calculate number of bytes in a line
 			ldy	#MODE15_TEXT_ROWS		; text window bottom margin maximum
 			sty	VDU_T_WIN_B			; bottom margin
+
+			lda	#24
+			jsr	OSWRCH_NV			; and do VDU 24			
+
+			lda	#0
+			jsr	OSWRCH_NV			; and do VDU 24			
+			jsr	OSWRCH_NV			; and do VDU 24			
+
+			jsr	OSWRCH_NV			; and do VDU 24			
+			jsr	OSWRCH_NV			; and do VDU 24			
+
+			lda	#$FF
+			jsr	OSWRCH_NV			; and do VDU 24			
+			jsr	OSWRCH_NV			; and do VDU 24			
+
+			jsr	OSWRCH_NV			; and do VDU 24			
+			jsr	OSWRCH_NV			; and do VDU 24			
+
+
 			ldy	#$03				; Y=3
 			sty	VDU_QUEUE_8			; set as last parameter
 			iny					; increment Y
 			sty	VDU_QUEUE_6			; set parameters
 			dec	VDU_QUEUE_7			; 
 			dec	VDU_QUEUE_5			; 
-			lda	#24
-			jsr	OSWRCH_NV			; and do VDU 24
 			lda	#$f7				; 
 			jsr	AND_VDU_STATUS			; clear bit 3 of &D0
 			ldx	VDU_MEM				; window area start address lo
@@ -745,7 +762,7 @@ _LCB14:			lda	#$ff				;
 _BCB19:			inc	OSB_HALT_LINES			; paged mode counter
 _BCB1C:			rts					; 
 
-
+; _VDU_22 MODE
 ;********* enter here from VDU 22,n - MODE *******************************
 
 ;    ____  _   ______  __   __  _______  ____  ______   ___________
@@ -1338,13 +1355,13 @@ _VDU_TABLE_COUNT:		.byte	<0				; VDU  0  - &C511, no parameters
 			.byte	<0				; VDU 20  - &C839, no parameters
 			.byte	<0				; VDU 21  - &C59B, no parameters
 			.byte	<-1				; VDU 22  - &C8EB, 1 parameter
-			.byte	<-9				; VDU 23  - &C8F1, 9 parameters
-			.byte	<-8				; VDU 24  - &CA39, 8 parameters
-			.byte	<-5				; VDU 25  - &C9AC, 5 parameters
+			.byte	<0				; VDU 23  - &C8F1, 9 parameters
+			.byte	<0				; VDU 24  - &CA39, 8 parameters
+			.byte	<0				; VDU 25  - &C9AC, 5 parameters
 			.byte	<0				; VDU 26  - &C9BD, no parameters
 			.byte	<0				; VDU 27  - &C511, no parameters
 			.byte	<-4				; VDU 28  - &C6FA, 4 parameters
-			.byte	<-4				; VDU 29  - &CAA2, 4 parameters
+			.byte	<0				; VDU 29  - &CAA2, 4 parameters
 			.byte	<0				; VDU 30  - &C779, no parameters
 			.byte	<-2				; VDU 31  - &C787, 2 parameters
 			.byte	<0				; VDU 127 - &CAAC, no parameters
