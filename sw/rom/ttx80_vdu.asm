@@ -7,6 +7,7 @@ __TTX80_ASM:
 		.include "ttx80_vdu.inc"
 
 		.export	my_WRCHV
+		.export my_OSBYTE
 		.export  crtcRegs80
 		.export  crtcRegsMode0
 
@@ -23,6 +24,8 @@ VDU_TMP6	= zp_vdu_wksp + 5
 .exportzp VDU_TOP_SCAN_HI	:= $d9
 
 .export OSB_VDU_QSIZE		:= $026a
+
+.export OSB_RAM_PAGES		:= $028e
 
 .export VDU_ADJUST		:= $0290
 .export VDU_INTERLACE		:= $0291
@@ -1198,6 +1201,46 @@ _WRITE_SYS_VIA_PORTB:	php					; push flags
 			sta	SYS_VIA_IORB			; write register B from Accumulator
 			plp					; get back flags
 			rts					; and exit
+
+;;    ____  _____ ______  ______________   ____  __________  ________  __________________
+;;   / __ \/ ___// __ ) \/ /_  __/ ____/  / __ \/ ____/ __ \/  _/ __ \/ ____/ ____/_  __/
+;;  / / / /\__ \/ __  |\  / / / / __/    / /_/ / __/ / / / // // /_/ / __/ / /     / /
+;; / /_/ /___/ / /_/ / / / / / / /___   / _, _/ /___/ /_/ // // _, _/ /___/ /___  / /
+;; \____//____/_____/ /_/ /_/ /_____/  /_/ |_/_____/_____/___/_/ |_/_____/\____/ /_/
+;; 
+
+my_OSBYTE:		cmp	#133
+			beq	_OSBYTE_133
+			cmp	#132
+			beq	_OSBYTE_132
+
+SKIP_OSBYTE:		jmp	MOS_BYTEV_ORG
+
+
+;*************************************************************************
+;*									 *
+;*	 OSBYTE 132 - READ BOTTOM OF DISPLAY RAM			 *
+;*									 *
+;*************************************************************************
+
+_OSBYTE_132:		ldx	VDU_MODE			; Get current screen mode
+
+;*************************************************************************
+;*									 *
+;*	 OSBYTE 133 - READ LOWEST ADDRESS FOR GIVEN MODE		 *
+;*									 *
+;*************************************************************************
+
+_OSBYTE_133:		
+			cpx	#15
+			bne	SKIP_OSBYTE
+
+			ldx	#0
+			ldy	#$78
+			bit	OSB_RAM_PAGES
+			bmi	@sk2
+			ldy	#$38
+@sk2:			rts
 
 
 

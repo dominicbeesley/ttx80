@@ -26,17 +26,26 @@
 brkBadOrgVec:
 		plp
 		M_ERROR	
-		.byte	$FF,"The WRCHV vector has already been redirected",0
+		.byte	$FF,"The OSWRCH or OSBYTE vector has already been redirected",0
 
 cmdMode15:
 		php
 		sei
+
 		lda	WRCHV
 		cmp	#<MOS_WRCHV_ORG
 		bne	brkBadOrgVec
 		lda	WRCHV+1
 		cmp	#>MOS_WRCHV_ORG
 		bne	brkBadOrgVec
+
+		lda	BYTEV
+		cmp	#<MOS_BYTEV_ORG
+		bne	brkBadOrgVec
+		lda	BYTEV+1
+		cmp	#>MOS_BYTEV_ORG
+		bne	brkBadOrgVec
+
 
 		lda	#<my_WRCHV
 		sta	EXT_WRCHV
@@ -45,10 +54,23 @@ cmdMode15:
 		lda	zp_mos_curROM
 		sta	EXT_WRCHV+2
 
+		lda	#<my_OSBYTE
+		sta	EXT_BYTEV
+		lda	#>my_OSBYTE
+		sta	EXT_BYTEV+1
+		lda	zp_mos_curROM
+		sta	EXT_BYTEV+2
+
+
 		lda	#<EXTVEC_ENTER_WRCHV
 		sta	WRCHV
 		lda	#>EXTVEC_ENTER_WRCHV
 		sta	WRCHV+1
+
+		lda	#<EXTVEC_ENTER_BYTEV
+		sta	BYTEV
+		lda	#>EXTVEC_ENTER_BYTEV
+		sta	BYTEV+1
 
 		plp
 	
