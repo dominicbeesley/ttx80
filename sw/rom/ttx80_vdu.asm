@@ -1,13 +1,99 @@
 
+__TTX80_ASM:
+
 		.include "hardware.inc"
 		.include "mosrom.inc"
+		.include "oslib.inc"
+		.include "ttx80_vdu.inc"
 
 		.export	my_WRCHV
-		.export	MOS_WRCHV_ORG
 		.export  crtcRegs80
 		.export  crtcRegsMode0
 
-MOS_WRCHV_ORG	= $E0A4			; for now hard-code vdu vector pass on
+VDU_TMP1	= zp_vdu_wksp + 0
+VDU_TMP2	= zp_vdu_wksp + 1
+VDU_TMP3	= zp_vdu_wksp + 2
+VDU_TMP4	= zp_vdu_wksp + 3
+VDU_TMP5	= zp_vdu_wksp + 4
+VDU_TMP6	= zp_vdu_wksp + 5
+
+.exportzp VDU_STATUS		:= $d0
+
+.exportzp VDU_TOP_SCAN		:= $d8
+.exportzp VDU_TOP_SCAN_HI	:= $d9
+
+.export OSB_VDU_QSIZE		:= $026a
+
+.export VDU_ADJUST		:= $0290
+.export VDU_INTERLACE		:= $0291
+
+.export OSB_HALT_LINES		:= $0269
+.export OSB_OUT_STREAM		:= $027c
+
+.export VDU_VARS_BASE		:= $0300
+.export VDU_G_WIN_L		:= $0300
+.export VDU_G_WIN_L_HI		:= $0301
+.export VDU_G_WIN_B		:= $0302
+.export VDU_G_WIN_B_HI		:= $0303
+.export VDU_G_WIN_R		:= $0304
+.export VDU_G_WIN_R_HI		:= $0305
+.export VDU_G_WIN_T		:= $0306
+.export VDU_G_WIN_T_HI		:= $0307
+.export VDU_T_WIN_L		:= $0308
+.export VDU_T_WIN_B		:= $0309
+.export VDU_T_WIN_R		:= $030a
+.export VDU_T_WIN_T		:= $030b
+
+.export VDU_T_CURS_X		:= $0318
+.export VDU_T_CURS_Y		:= $0319
+
+.export VDU_QUEUE		:= $031b
+.export VDU_QUEUE_1		:= $031c
+.export VDU_QUEUE_2		:= $031d
+.export VDU_QUEUE_3		:= $031e
+.export VDU_QUEUE_4		:= $031f
+.export VDU_QUEUE_5		:= $0320
+.export VDU_QUEUE_6		:= $0321
+.export VDU_QUEUE_7		:= $0322
+.export VDU_QUEUE_8		:= $0323
+
+.export VDU_BITMAP_READ		:= $0328
+
+.export VDU_WORKSPACE		:= $0330
+
+.export VDU_CRTC_CUR		:= $034a
+.export VDU_CRTC_CUR_HI		:= $034b
+.export VDU_T_WIN_SZ		:= $034c
+.export VDU_T_WIN_SZ_HI		:= $034d
+.export VDU_PAGE		:= $034e
+.export VDU_BPC			:= $034f
+
+.export VDU_MEM			:= $0350
+.export VDU_MEM_HI		:= $0351
+.export VDU_BPR			:= $0352
+.export VDU_BPR_HI		:= $0353
+.export VDU_MEM_PAGES		:= $0354
+.export VDU_MODE		:= $0355
+.export VDU_MAP_TYPE		:= $0356
+
+.export VDU_T_FG		:= $0357
+.export VDU_T_BG		:= $0358
+
+.export VDU_JUMPVEC		:= $035d
+.export VDU_JUMPVEC_HI		:= $035e
+.export VDU_CURS_PREV		:= $035f
+
+.export VDU_COL_MASK		:= $0360
+.export VDU_PIX_BYTE		:= $0361
+.export VDU_MASK_RIGHT		:= $0362
+.export VDU_MASK_LEFT		:= $0363
+.export VDU_TI_CURS_X		:= $0364
+.export VDU_TI_CURS_Y		:= $0365
+.export VDU_TTX_CURSOR		:= $0366
+
+SYS_VIA_IORB	:= sheila_SYSVIA_orb
+CRTC_ADDRESS	:= sheila_CRTC_reg
+CRTC_DATA	:= sheila_CRTC_rw
 
 
 		.CODE
@@ -17,7 +103,7 @@ my_WRCHV:	pha					; Save all registers
 		pha					
 		tya					
 		pha					
-		bit	sysvar_ECO_OSBW_INTERCEPT		; Check OSWRCH interception flag
+		bit	sysvar_ECO_OSBW_INTERCEPT	; Check OSWRCH interception flag
 		bpl	__no_intercept			; Not set, skip interception call
 call_org_vec:
 		pla
@@ -25,22 +111,172 @@ call_org_vec:
 		pla
 		tax
 		pla
-		jmp	MOS_WRCHV_ORG
+		jmp	OSWRCH_NV
 
 
-__no_intercept:	lda	sysvar_VDU_Q_LEN
-		bne	call_org_vec
+__no_intercept:	
 
-		lda	#'!'
-		jsr	MOS_WRCHV_ORG
+		tsx
+
+		clc					; Prepare to not send this to printer
+		lda	#$02				; Check output destination
+		bit	OSB_OUT_STREAM			; Is VDU driver disabled?
+		bne	_BE0C8				; Yes, skip past VDU driver
+		lda	$103,X
+		jsr	_VDUCHR				; Call VDU driver
+			
+
+_BE0C8:
+		lda	OSB_OUT_STREAM
+		pha
+		ora	#$02
+		sta	OSB_OUT_STREAM
+
+		lda	$104,X
+
+		jsr	OSWRCH_NV			; TODO: pass on to spool/rs423/printer
+							; TODO: this won't work correctly for printer though
+							; need to also force printer on if _VDU_CHR returns Cy?
+							; TODO: ask on stardot!
+
+		pla
+		sta	OSB_OUT_STREAM
 
 		pla
 		tay
 		pla
 		tax
 		pla
-		jmp	MOS_WRCHV_ORG
+		rts
 
+_VDUCHR:	
+		ldx	OSB_VDU_QSIZE
+		bne	_VDUCHR_PASSBACK
+		ldx	VDU_MODE			; are we in mode 15
+		cpx	#15
+		beq	_VDUCHR_MODE15			; jump forwards if we are
+
+		; else check for Q empty and char 22 i.e. mode switch....it might be us!
+		cmp	#22
+		beq	_VDUCHR_MODE15
+_VDUCHR_PASSBACK:
+		pla
+		pla	; don't return to _BE0C8
+
+		pla
+		tay
+		pla
+		tax
+		pla
+		jmp	OSWRCH_NV
+
+
+_VDUCHR_MODE15:	; we are now either in mode 15 or about to do a set mode 
+			bit	VDU_STATUS			; else check status byte
+			bvc	__vdu_check_delete		; if cursor editing enabled two cursors exist
+			jsr	_LC568_swapcurs			; swap values
+			jsr	_LCD6A				; then set up write cursor
+			bmi	__vdu_check_delete		; if display disabled C4D8
+			cmp	#$0d				; else if character in A=RETURN teminate edit
+			bne	__vdu_check_delete		; else C4D8
+
+			jsr	_LD918				; terminate edit
+
+__vdu_check_delete:	cmp	#$7f				; is character DELETE ?
+			beq	_BC4ED				; if so C4ED
+
+			cmp	#$20				; is it less than space? (i.e. VDU control code)
+			bcc	_BC4EF				; if so C4EF
+			bit	VDU_STATUS			; else check VDU byte ahain
+			bmi	_BC4EA				; if screen disabled C4EA
+			jsr	_VDU_OUT_CHAR			; else display a character
+			jsr	_VDU_9				; and cursor right
+_BC4EA:			jmp	_LC55E				; 
+
+;********* read link addresses and number of parameters *****************
+
+_BC4ED:			lda	#$20				; to replace delete character
+
+;********* read link addresses and number of parameters *****************
+
+_BC4EF:			tay					; Y=A
+			lda	_VDU_TABLE_HI,Y			; get hi byte
+			
+			beq	_VDUCHR_PASSBACK		; not a mode15 special pass to original
+
+			sta	VDU_JUMPVEC_HI
+
+			lda	_VDU_TABLE_LO,Y			; get lo byte of link address
+			sta	VDU_JUMPVEC			; store it in jump vector
+
+			lda	_VDU_TABLE_COUNT,Y
+
+			beq	_BC545				; if zero (as it will be if a direct address)
+								; there are no parameters needed
+								; so C545
+			sta	OSB_VDU_QSIZE
+			bit	VDU_STATUS			; check if cursor editing enabled
+			bvs	_BC52F				; if so re-exchange pointers
+			clc					; clear carry
+_VDU_0_6_27:
+_VDU_0:
+_VDU_6:
+_VDU_27:		rts					; and exit
+
+
+_BC52F:			jsr	_LC565				; re-exchange pointers
+
+_BC532:			clc					; carry clear
+			rts					; exit
+
+
+;*********** if explicit link address found, no parameters ***************
+
+_BC545:			tya					; restore A
+			cmp	#$08				; is it 7 or less?
+			bcc	_BC553				; if so C553
+			eor	#$ff				; invert it
+			cmp	#$f2				; c is set if A >&0D
+			eor	#$ff				; re invert
+
+_BC553:			bit	VDU_STATUS			; VDU status byte
+			bmi	_BC580				; if display disabled C580
+			php					; push processor flags
+			jsr	_VDU_JUMP			; execute required function
+			plp					; get back flags
+			bcc	_BC561				; if carry clear (from C54B/F)
+
+;**************** main exit routine **************************************
+
+_LC55E:			lda	VDU_STATUS			; VDU status byte
+			lsr					; Carry is set if printer is enabled
+_BC561:			bit	VDU_STATUS			; VDU status byte
+			bvc	_VDU_0_6_27			; if no cursor editing	C511 to exit
+
+;***************** cursor editing routines *******************************
+
+_LC565:			jsr	_LCD7A				; restore normal write cursor
+
+_LC568_swapcurs:			php					; save flags and
+			pha					; A
+			ldx	#<VDU_T_CURS_X			; X=&18
+			ldy	#<VDU_TI_CURS_X			; Y=&64
+			jsr	_LCDDE_EXG2_P3			; exchange &300/1+X with &300/1+Y
+			jsr	_LCF06				; set up display address
+			jsr	SET_CURS_CHARSCANAX				; set cursor position
+			lda	VDU_STATUS			; VDU status byte
+			eor	#$02				; invert bit 1 to allow or bar scrolling
+			sta	VDU_STATUS			; VDU status byte
+			pla					; restore flags and A
+			plp					; 
+			rts					; and exit
+
+_BC580:			eor	#$06				; if A<>6
+			bne	_BC58C				; return via C58C
+			lda	#$7f				; A=&7F
+			bcc	AND_VDU_STATUS			; and goto C5A8 ALWAYS!!
+
+_BC58C:			rts					; and exit
 
 ;*************************************************************************
 ;*									 *
@@ -49,6 +285,11 @@ __no_intercept:	lda	sysvar_VDU_Q_LEN
 ;*************************************************************************
 
 
+OR_VDU_STATUS:		ora	VDU_STATUS			; VDU status byte set bit 0 or bit 7
+			bne	STA_VDU_STATUS				; branch forward to store
+AND_VDU_STATUS:		and	VDU_STATUS			; VDU status byte clear bit 0 or bit 2 of status
+STA_VDU_STATUS:		sta	VDU_STATUS			; VDU status byte
+_BC5AC_rts:		rts					; exit
 
 
 ;*************************************************************************
@@ -57,13 +298,11 @@ __no_intercept:	lda	sysvar_VDU_Q_LEN
 ;*									 *
 ;*************************************************************************
 
-_VDU_8:			jsr	_LC588				; A=0 if text cursor A=&20 if graphics cursor
-			bne	_BC61F				; move cursor left 8 pixels if graphics
-			dec	VDU_T_CURS_X			; else decrement text column
+_VDU_8:			dec	VDU_T_CURS_X			; else decrement text column
 			ldx	VDU_T_CURS_X			; store new text column
 			cpx	VDU_T_WIN_L			; if it is less than text window left
 			bmi	__curs_t_wrap_left		; do wraparound	 cursor to rt of screen 1 line up
-			lda	VDU_CRTC_CUR			; text cursor 6845 address
+			ldx	VDU_CRTC_CUR			; text cursor 6845 address
 			sec					; subtract
 			sbc	VDU_BPC				; bytes per character
 			tax					; put in X
@@ -82,10 +321,38 @@ __curs_t_wrap_top:	tay					; Y=A
 ;*									 *
 ;*************************************************************************
 
-_VDU_11:		jsr	_LC588				; A=0 if text cursor A=&20 if graphics cursor
-			beq	_BC5F4				; if text cursor then C5F4
-_BC660:			ldx	#$02				; else X=2
-			bne	_BC6B6				; goto C6B6
+;***************** execute wraparound left-up*****************************
+
+__curs_t_wrap_left:	lda	VDU_T_WIN_R			; text window right
+			sta	VDU_T_CURS_X			; text column
+
+;*************** cursor up ***********************************************
+
+_VDU_11:
+_BC5F4:			dec	OSB_HALT_LINES			; paged mode counter
+			bpl	_BC5FC				; if still greater than 0 skip next instruction
+			inc	OSB_HALT_LINES			; paged mode counter to restore X=0
+_BC5FC:			ldx	VDU_T_CURS_Y			; current text line
+			cpx	VDU_T_WIN_T			; top of text window
+			beq	_BC60A				; if its at top of window C60A
+			dec	VDU_T_CURS_Y			; else decrement current text line
+			jmp	_LC6AF				; and carry on moving cursor
+
+;******** cursor at top of window ****************************************
+
+_BC60A:			clc					; clear carry
+			jsr	_LCD3F				; check for window violatations
+			lda	#$08				; A=8 to check for software scrolling
+			bit	VDU_STATUS			; compare against VDU status byte
+			bne	_BC619				; if not enabled C619
+			jsr	_LC994				; set screen start register and adjust RAM
+			bne	_BC61C				; jump C61C
+
+_BC619:			jsr	_LCDA4				; soft scroll 1 line
+_BC61C:			jmp	_LC6AC				; and exit
+
+
+
 
 ;*************************************************************************
 ;*									 *
@@ -93,10 +360,7 @@ _BC660:			ldx	#$02				; else X=2
 ;*									 *
 ;*************************************************************************
 
-_VDU_9:			lda	VDU_STATUS			; VDU status byte
-			and	#$20				; check bit 5
-			bne	_BC6B4				; if set then graphics cursor in use so C6B4
-			ldx	VDU_T_CURS_X			; text column
+_VDU_9:			ldx	VDU_T_CURS_X			; text column
 			cpx	VDU_T_WIN_R			; text window right
 			bcs	_BC684				; if X exceeds window right then C684
 			inc	VDU_T_CURS_X			; text column
@@ -111,6 +375,13 @@ _VDU_9:			lda	VDU_STATUS			; VDU status byte
 
 _BC684:			lda	VDU_T_WIN_L			; text window left
 			sta	VDU_T_CURS_X			; text column
+
+;*************************************************************************
+;*									 *
+;*	 VDU 10	 - CURSOR DOWN						 *
+;*									 *
+;*************************************************************************
+_VDU_10:
 
 ;********: text cursor down *************************************
 
@@ -136,17 +407,6 @@ _LC6AF:			jsr	_LCF06				; set up display address
 
 ;*************************************************************************
 ;*									 *
-;*	 VDU 10	 - CURSOR DOWN						 *
-;*									 *
-;*************************************************************************
-
-_VDU_10:		jsr	_LC588				; A=0 if text cursor A=&20 if graphics cursor
-			beq	_BC68A				; if text cursor back to C68A
-_BC6F5:			ldx	#$02				; else X=2 to indicate vertical movement
-			jmp	_LC621				; move graphics cursor down
-
-;*************************************************************************
-;*									 *
 ;*	 VDU 28 - DEFINE TEXT WINDOW					 *
 ;*									 *
 ;*	 4 parameters							 *
@@ -159,33 +419,34 @@ _BC6F5:			ldx	#$02				; else X=2 to indicate vertical movement
 ;0323  P4 top margin
 ;Note that last parameter is always in 0323
 
-_VDU_28:		ldx	VDU_MODE			; screen mode
-			lda	VDU_QUEUE_6			; get bottom margin
+_VDU_28:		lda	VDU_QUEUE_6			; get bottom margin
 			cmp	VDU_QUEUE_8			; compare with top margin
-			bcc	_BC758				; if bottom margin exceeds top return
-			cmp	_TEXT_ROW_TABLE,X		; text window bottom margin maximum
+			bcc	_BC758rts			; if bottom margin exceeds top return
+			cmp	#MODE15_TEXT_ROWS		; text window bottom margin maximum
 			beq	_BC70C				; if equal then its OK
-			bcs	_BC758				; else exit
+			bcs	_BC758rts			; else exit
 
 _BC70C:			lda	VDU_QUEUE_7			; get right margin
 			tay					; put it in Y
-			cmp	_TEXT_COL_TABLE,X		; text window right hand margin maximum
+			cmp	#MODE15_TEXT_COLS		; text window right hand margin maximum
 			beq	_BC717				; if equal then OK
-			bcs	_BC758				; if greater than maximum exit
+			bcs	_BC758rts			; if greater than maximum exit
 
 _BC717:			sec					; set carry to subtract
 			sbc	VDU_QUEUE_5			; left margin
-			bmi	_BC758				; if left greater than right exit
+			bmi	_BC758rts			; if left greater than right exit
 			tay					; else A=Y (window width)
 			jsr	_LCA88				; calculate number of bytes in a line
 			lda	#$08				; A=8 to set bit  of &D0
-			jsr	OR_VDU_STATUS				; indicating that text window is defined
+			jsr	OR_VDU_STATUS			; indicating that text window is defined
 			ldx	#$20				; point to parameters
 			ldy	#$08				; point to text window margins
 			jsr	_LD48A				; (&300/3+Y)=(&300/3+X)
 			jsr	_LCEE8				; set up screen address
 			bcs	_VDU_30				; home cursor within window
 _BC732:			jmp	SET_CURS_CHARSCANAX				; set cursor position
+
+_BC758rts:		rts	; TODO: merge with another RTS?
 
 
 ;*************************************************************************
@@ -195,12 +456,10 @@ _BC732:			jmp	SET_CURS_CHARSCANAX				; set cursor position
 ;*									 *
 ;*************************************************************************
 
-_VDU_12:		jsr	_LC588				; A=0 if text cursor A=&20 if graphics cursor
-			bne	_BC7BD				; if graphics cursor &C7BD
-			lda	VDU_STATUS			; VDU status byte
+_VDU_12:		lda	VDU_STATUS			; VDU status byte
 			and	#$08				; check if software scrolling (text window set)
 			bne	_BC767				; if so C767
-			jmp	_LCBC1_DOCLS				; initialise screen display and home cursor
+			jmp	_LCBC1_DOCLS			; initialise screen display and home cursor
 
 _BC767:			ldx	VDU_T_WIN_T			; top of text window
 _BC76A:			stx	VDU_T_CURS_Y			; current text line
@@ -211,17 +470,15 @@ _BC76A:			stx	VDU_T_CURS_Y			; current text line
 			inx					; X=X+1
 			bcc	_BC76A				; if X at compare is less than bottom margin clear next
 
-
+			; fall through to "HOME"
 ;*************************************************************************
 ;*									 *
 ;*	 VDU 30 - HOME CURSOR						 *
 ;*									 *
 ;*************************************************************************
 
-_VDU_30:		jsr	_LC588				; A=0 if text cursor A=&20 if graphics cursor
-			beq	_BC781				; if text cursor C781
-			jmp	_LCFA6				; home graphic cursor if graphic
-_BC781:			sta	VDU_QUEUE_8			; store 0 in last two parameters
+_VDU_30:		lda	#0
+			sta	VDU_QUEUE_8			; store 0 in last two parameters
 			sta	VDU_QUEUE_7			; 
 
 
@@ -236,9 +493,7 @@ _BC781:			sta	VDU_QUEUE_8			; store 0 in last two parameters
 ;0322 = supplied X coordinate
 ;0323 = supplied Y coordinate
 
-_VDU_31:		jsr	_LC588				; A=0 if text cursor A=&20 if graphics cursor
-			bne	_BC758				; exit
-			jsr	_LC7A8				; exchange text column/line with workspace 0328/9
+_VDU_31:		jsr	_LC7A8				; exchange text column/line with workspace 0328/9
 			clc					; clear carry
 			lda	VDU_QUEUE_7			; get X coordinate
 			adc	VDU_T_WIN_L			; add to text window left
@@ -251,7 +506,7 @@ _VDU_31:		jsr	_LC588				; A=0 if text cursor A=&20 if graphics cursor
 			bcc	_BC732				; set cursor position if C=0 (point on screen)
 _LC7A8:			ldx	#<VDU_T_CURS_X			; else point to workspace
 			ldy	#<VDU_BITMAP_READ		; and line/column to restore old values
-			jmp	_LCDDE_EXG2_P3				; exchange &300/1+X with &300/1+Y
+			jmp	_LCDDE_EXG2_P3			; exchange &300/1+X with &300/1+Y
 
 ;*************************************************************************
 ;*									 *
@@ -259,14 +514,8 @@ _LC7A8:			ldx	#<VDU_T_CURS_X			; else point to workspace
 ;*									 *
 ;*************************************************************************
 
-_VDU_13:		jsr	_LC588				; A=0 if text cursor A=&20 if graphics cursor
-			beq	_BC7B7				; if text C7B7
-			jmp	_LCFAD				; else set graphics cursor to left hand columm
-
-_BC7B7:			jsr	_LCE6E				; set text column to left hand column
+_VDU_13:		jsr	_LCE6E				; set text column to left hand column
 			jmp	_LC6AF				; set up cursor and display address
-
-_BC7BD:			jsr	_LCFA6				; home graphic cursor
 
 
 ;*************************************************************************
@@ -280,7 +529,77 @@ _BC7BD:			jsr	_LCFA6				; home graphic cursor
 ;parameter in &323
 
 _VDU_22:		lda	VDU_QUEUE_8			; get parameter
-			jmp	_LCB33				; goto CB33
+			cmp	#15
+			bne	@sk22
+			jmp	_LCB33
+
+			; a different mode - pass it along
+@sk22:			pha
+			lda	#22
+			jsr	OSWRCH_NV
+			pla
+			jmp	OSWRCH_NV
+			
+;********** turn cursor on/off *******************************************
+_LC951:			lda	VDU_CURS_PREV			; get last setting of CRT controller register
+								; for cursor on
+_LC954:			ldy	#$0a				; Y=10 - cursor control register number
+			bne	_BC985				; jump to C985, Y=register, Y=value
+
+
+;********** set CRT controller *******************************************
+
+SET_CRTC_YeqA:		cpy	#$07				; is Y=7
+			bcc	_BC985				; if less C985
+			bne	_BC967				; else if >7 C967
+			adc	VDU_ADJUST			; else ADD screen vertical display adjustment
+
+_BC967:			cpy	#$08				; If Y<>8
+			bne	_BC972				; C972
+			ora	#$00				; if bit 7 set
+			bmi	_BC972				; C972
+			eor	VDU_INTERLACE			; else EOR with interlace toggle
+
+_BC972:			cpy	#$0a				; Y=10??
+			bne	_BC985				; if not C985
+			sta	VDU_CURS_PREV			; last setting of CRT controller register
+			tay					; Y=A
+			lda	VDU_STATUS			; VDU status byte
+			and	#$20				; check bit 5 printing at graphics cursor??
+			php					; push flags
+			tya					; Y=A
+			ldy	#$0a				; Y=10
+			plp					; pull flags
+			bne	_BC98B				; if graphics in use then C98B
+
+
+_BC985:			sty	CRTC_ADDRESS			; else set CRTC address register
+			sta	CRTC_DATA			; and poke new value to register Y
+_BC98B:			rts					; exit
+
+
+;********** adjust screen RAM addresses **********************************
+
+_LC994:			ldx	VDU_MEM				; window area start address lo
+			lda	VDU_MEM_HI			; window area start address hi
+			jsr	_LCCF8				; subtract bytes per character row from this
+			bcs	_BC9B3				; if no wraparound needed C9B3
+
+			adc	VDU_MEM_PAGES			; screen RAM size hi byte to wrap around
+			bcc	_BC9B3				; 
+
+_LC9A4:			ldx	VDU_MEM				; window area start address lo
+			lda	VDU_MEM_HI			; window area start address hi
+			jsr	_LCAD4				; add bytes per char. row
+			bpl	_BC9B3				; 
+
+			sec					; wrap around i other direction
+			sbc	VDU_MEM_PAGES			; screen RAM size hi byte
+_BC9B3:			sta	VDU_MEM_HI			; window area start address hi
+			stx	VDU_MEM				; window area start address lo
+			ldy	#$0c				; Y=12
+			bne	SET_CRTCY_AXDIV8		; jump to CA0E
+
 
 ;*************************************************************************
 ;*									 *
@@ -295,11 +614,10 @@ _BC9C1:			sta	VDU_G_WIN_L,X			; clear all windows
 			dex					; 
 			bpl	_BC9C1				; until X=&FF
 
-			ldx	VDU_MODE			; screen mode
-			ldy	_TEXT_COL_TABLE,X		; text window right hand margin maximum
+			ldy	#MODE15_TEXT_COLS		; text window right hand margin maximum
 			sty	VDU_T_WIN_R			; text window right
 			jsr	_LCA88				; calculate number of bytes in a line
-			ldy	_TEXT_ROW_TABLE,X		; text window bottom margin maximum
+			ldy	#MODE15_TEXT_ROWS		; text window bottom margin maximum
 			sty	VDU_T_WIN_B			; bottom margin
 			ldy	#$03				; Y=3
 			sty	VDU_QUEUE_8			; set as last parameter
@@ -307,9 +625,10 @@ _BC9C1:			sta	VDU_G_WIN_L,X			; clear all windows
 			sty	VDU_QUEUE_6			; set parameters
 			dec	VDU_QUEUE_7			; 
 			dec	VDU_QUEUE_5			; 
-			jsr	_VDU_24				; and do VDU 24
+			lda	#24
+			jsr	OSWRCH_NV			; and do VDU 24
 			lda	#$f7				; 
-			jsr	AND_VDU_STATUS				; clear bit 3 of &D0
+			jsr	AND_VDU_STATUS			; clear bit 3 of &D0
 			ldx	VDU_MEM				; window area start address lo
 			lda	VDU_MEM_HI			; window area start address hi
 SET_CRTC_CURSeqAX_adj:	stx	VDU_CRTC_CUR			; text cursor 6845 address
@@ -325,29 +644,23 @@ SET_CURS_CHARSCANAX:	stx	VDU_TOP_SCAN			; set &D8/9 from X/A
 			ldx	VDU_CRTC_CUR			; text cursor 6845 address
 			lda	VDU_CRTC_CUR_HI			; text cursor 6845 address
 			ldy	#$0e				; Y=15
-SET_CRTCY_AXDIV8:	pha					; Push A
-			lda	VDU_MODE			; screen mode
-			cmp	#$07				; is it mode 7?
-			pla					; get back A
-			bcs	_BCA27				; if mode 7 selected CA27
-			stx	VDU_TMP1			; else store X
-			lsr					; divide X/A by 8
-			ror	VDU_TMP1			; 
-			lsr					; 
-			ror	VDU_TMP1			; 
-			lsr					; 
-			ror	VDU_TMP1			; 
-			ldx	VDU_TMP1			; 
-			jmp	SET_CRTC_YeqAX			; goto CA2B
-
-_BCA27:			sbc	#$74				; mode 7 subtract &74
-			eor	#$20				; EOR with &20
+SET_CRTCY_AXDIV8:	and	#$0F				; mode 15 0x3000-0x3FFF
+			ora	#$30				; EOR with &20
 SET_CRTC_YeqAX:		sty	CRTC_ADDRESS			; write to CRTC address file register
 			sta	CRTC_DATA			; and to relevant address (register 14)
 			iny					; Increment Y
 			sty	CRTC_ADDRESS			; write to CRTC address file register
 			stx	CRTC_DATA			; and to relevant address (register 15)
 			rts					; and RETURN
+
+_LCA88:
+			; mode 15 just store as width			iny					; Y=Y+1
+			lda	#$00				; Y=0
+			sta	VDU_T_WIN_SZ_HI			; text window width hi (bytes)
+			sty	VDU_T_WIN_SZ			; text window width lo (bytes)
+			rts					; 
+
+
 
 ;*************************************************************************
 ;*									 *
@@ -356,23 +669,9 @@ SET_CRTC_YeqAX:		sty	CRTC_ADDRESS			; write to CRTC address file register
 ;*************************************************************************
 
 _VDU_127:		jsr	_VDU_8				; cursor left
-			jsr	_LC588				; A=0 if text cursor A=&20 if graphics cursor
-			bne	__vdu_del_modeX			; if graphics then CAC7
-			ldx	VDU_COL_MASK			; number of logical colours less 1
-			beq	__vdu_del_mode7			; if mode 7 CAC2
-			sta	VDU_TMP5			; else store A (always 0)
-			lda	#$c0				; A=&C0
-			sta	VDU_TMP6			; store in &DF (&DE) now points to C300 SPACE pattern
-			jmp	_LCFBF				; display a space
-
-__vdu_del_mode7:	lda	#$20				; A=&20
+__vdu_del_mode7:	lda	#' '				; A=&20
 			jmp	_VDU_OUT_MODE7			; and return to display a space
 
-__vdu_del_modeX:	lda	#$7f				; for graphics cursor
-			jsr	_LD03E				; set up character definition pointers
-			ldx	VDU_G_BG			; Background graphics colour
-			ldy	#$00				; Y=0
-			jmp	_LCF63				; invert pattern data (to background colour)
 
 ;***** Add number of bytes in a line to X/A ******************************
 
@@ -384,6 +683,521 @@ _LCAD4:			pha					; store A
 			pla					; get back A
 			adc	VDU_BPR_HI			; bytes per character row
 			rts					; and return
+
+;********* control scrolling in paged mode *******************************
+
+_BCAE0:			jsr	_LCB14				; zero paged mode line counter
+_LCAE3:			
+			; DB: a bit of extra pokery required here
+			lda	#118
+			jsr	OSBYTE				; osbyte 118 check keyboard status; set LEDs
+			bcc	_BCAEA				; if carry clear CAEA
+			
+			; check for shift
+			lda	#129
+			ldy	#$FF
+			ldx	#$FF
+			jsr	OSBYTE
+			inx
+			beq	_BCAE0				; if M set CAE0 do it again
+
+_BCAEA:			lda	VDU_STATUS			; VDU status byte
+			eor	#$04				; invert bit 2 paged scrolling
+			and	#$46				; and if 2 cursors, paged mode off, or scrolling
+			bne	_BCB1C				; barred then CB1C to exit
+
+			lda	OSB_HALT_LINES			; paged mode counter
+			bmi	_BCB19				; if negative then exit via CB19
+
+			lda	VDU_T_CURS_Y			; current text line
+			cmp	VDU_T_WIN_B			; bottom margin
+			bcc	_BCB19				; increment line counter and exit
+
+			lsr					; A=A/4
+			lsr					; 
+			sec					; set carry
+			adc	OSB_HALT_LINES			; paged mode counter
+			adc	VDU_T_WIN_T			; top of text window
+			cmp	VDU_T_WIN_B			; bottom margin
+			bcc	_BCB19				; increment line counter and exit
+
+			clc					; clear carry
+_BCB0E:			lda	#118
+			jsr	OSBYTE				; osbyte 118 check keyboard status; set LEDs
+
+			; check for shift
+			lda	#129
+			ldy	#$FF
+			ldx	#$FF
+			jsr	OSBYTE
+			inx
+
+			sec					; set carry
+			bne	_BCB0E				; if +ve result then loop till shift pressed
+
+;**************** zero paged mode  counter *******************************
+
+_LCB14:			lda	#$ff				; 
+			sta	OSB_HALT_LINES			; paged mode counter
+_BCB19:			inc	OSB_HALT_LINES			; paged mode counter
+_BCB1C:			rts					; 
+
+
+;********* enter here from VDU 22,n - MODE *******************************
+
+;    ____  _   ______  __   __  _______  ____  ______   ___________
+;   / __ \/ | / / /\ \/ /  /  |/  / __ \/ __ \/ ____/  <  / ____/ /
+;  / / / /  |/ / /  \  /  / /|_/ / / / / / / / __/     / /___ \/ /
+; / /_/ / /|  / /___/ /  / /  / / /_/ / /_/ / /___    / /___/ /_/
+; \____/_/ |_/_____/_/  /_/  /_/\____/_____/_____/   /_/_____(_)
+
+_LCB33:
+			tax					; X=mode
+			stx	VDU_MODE			; Save current screen MODE
+			lda	#0				; Get number of colours -1 for this MODE
+			sta	VDU_COL_MASK			; Set current number of logical colours less 1
+			sta	VDU_PIX_BYTE			; Set pixels per byte
+			lda	#1				; Get bytes/character for this MODE
+			sta	VDU_BPC				; Set bytes per character
+			sta	VDU_MASK_RIGHT			; colour mask right
+			lda	#$80				; byte/pixel=0, this is MODE 7, prepare A=7 offset into mask table
+			sta	VDU_MASK_LEFT			; colour mask left
+			lda	#4
+			sta	VDU_MAP_TYPE			; memory map type
+			jsr	_WRITE_SYS_VIA_PORTB		; set hardware scrolling to VIA
+			lda	#5
+			jsr	_WRITE_SYS_VIA_PORTB		; set hardware scrolling to VIA
+			lda	#8				; Screen RAM size hi byte table
+			sta	VDU_MEM_PAGES			; screen RAM size hi byte
+			lda	#$78				; screen ram address hi byte
+			sta	VDU_PAGE			; hi byte of screen RAM address
+
+
+			lda	#<MODE15_TEXT_COLS		; get nuber of bytes per row from table
+			sta	VDU_BPR				; store as bytes per character row
+			lda	#>MODE15_TEXT_COLS
+			stx	VDU_BPR_HI			; bytes per character row
+			lda	#$43				; A=&43
+			jsr	AND_VDU_STATUS			; A=A and &D0:&D0=A
+			lda	#MODE15_ULA_CTL			; get video ULA control setting
+			jsr	VID_ULA_SET			; set video ULA using osbyte 154 code
+			php					; push flags
+			sei					; set interrupts
+			ldy	#11				; Y=11
+_BCBB0:			lda	crtcRegs80,Y			; get end of 6845 registers 0-11 table
+			jsr	SET_CRTC_YeqA			; set register Y
+			dey					; reduce pointers
+			bpl	_BCBB0				; and if still >0 do it again
+			plp					; pull flags
+			lda	#20
+			jsr	OSWRCH_NV
+			jsr	_VDU_26				; set default windows
+
+_LCBC1_DOCLS:		ldx	#$00				; X=0
+			lda	VDU_PAGE			; hi byte of screen RAM address
+			stx	VDU_MEM				; window area start address lo
+			sta	VDU_MEM_HI			; window area start address hi
+			jsr	SET_CRTC_CURSeqAX_adj		; use AX to set new cursor address
+			ldy	#$0c				; Y=12
+			jsr	SET_CRTC_YeqAX			; set registers 12 and 13 in CRTC
+			lda	VDU_T_BG			; background text colour
+			ldx	#$00				; X=0
+			stx	OSB_HALT_LINES			; paged mode counter
+			stx	VDU_T_CURS_X			; text column
+			stx	VDU_T_CURS_Y			; current text line
+
+			lda	#'a'
+	
+@clslp:			sta	$7800,X
+			sta	$7900,X
+			sta	$7A00,X
+			sta	$7B00,X
+			sta	$7C00,X
+			sta	$7D00,X
+			sta	$7E00,X
+			sta	$7F00,X
+			dex	
+			bne	@clslp
+			rts
+
+;****************** execute required function ****************************
+
+_VDU_JUMP:		jmp	(VDU_JUMPVEC)			; jump vector set up previously
+
+;********* subtract bytes per line from X/A ******************************
+
+_LCCF8:			pha					; Push A
+			txa					; A=X
+			sec					; set carry for subtraction
+			sbc	VDU_BPR				; bytes per character row
+			tax					; restore X
+			pla					; and A
+			sbc	VDU_BPR_HI			; bytes per character row
+			cmp	VDU_PAGE			; hi byte of screen RAM address
+_BCD06:			rts					; return
+
+
+;******** move text cursor to next line **********************************
+
+_LCD3F:			lda	#$02				; A=2 to check if scrolling disabled
+			bit	VDU_STATUS			; VDU status byte
+			bne	_BCD47				; if scrolling is barred CD47
+			bvc	_BCD79				; if cursor editing mode disabled RETURN
+
+_BCD47:			lda	VDU_T_WIN_B			; bottom margin
+			bcc	_BCD4F				; if carry clear on entry CD4F
+			lda	VDU_T_WIN_T			; else if carry set get top of text window
+_BCD4F:			bvs	_BCD59				; and if cursor editing enabled CD59
+			sta	VDU_T_CURS_Y			; get current text line
+			pla					; pull return link from stack
+			pla					; 
+			jmp	_LC6AF				; set up cursor and display address
+
+_BCD59:			php					; push flags
+			cmp	VDU_TI_CURS_Y			; Y coordinate of text input cursor
+			beq	_BCD78				; if A=line count of text input cursor CD78 to exit
+			plp					; get back flags
+			bcc	_BCD66				; 
+			dec	VDU_TI_CURS_Y			; Y coordinate of text input cursor
+
+_BCD65:			rts					; exit
+
+_BCD66:			inc	VDU_TI_CURS_Y			; Y coordinate of text input cursor
+			rts					; exit
+
+;*********************** set up write cursor ********************************
+
+_LCD6A:			php					; save flags
+			pha					; save A
+
+			lda	VDU_WORKSPACE+8			; so get mode 7 write character cursor character &7F
+			sta	(VDU_TOP_SCAN),Y		; store it at top scan line of current character
+_LCD77:			pla					; pull A
+_BCD78:			plp					; pull flags
+_BCD79:			rts					; and exit
+
+_LCD7A:			php					; push flags
+			pha					; push A
+			ldy	#0
+			lda	(VDU_TOP_SCAN),Y		; get cursor from top scan line
+			sta	VDU_WORKSPACE+8			; store it
+			lda	VDU_TTX_CURSOR			; mode 7 write cursor character
+			sta	(VDU_TOP_SCAN),Y		; store it at scan line
+			jmp	_LCD77				; and exit
+
+
+
+_LCDA4:			jsr	_LCE5B				; exchange line and column cursors with workspace copies
+			lda	VDU_T_WIN_B			; bottom margin
+			sta	VDU_T_CURS_Y			; current text line
+			jsr	_LCF06				; set up display address
+_BCDB0:			jsr	_LCCF8				; subtract bytes per character row from this
+			bcs	_BCDB8				; wraparound if necessary
+			adc	VDU_MEM_PAGES			; screen RAM size hi byte
+_BCDB8:			sta	VDU_TMP2			; store A
+			stx	VDU_TMP1			; X
+			sta	VDU_TMP3			; A again
+			bcs	_BCDC6				; if C set there was no wraparound so CDC6
+_BCDC0:			jsr	_LCE73				; copy line to new position
+								; using (&DA) for read
+								; and (&D8) for write
+			jmp	_LCDCE				; 
+
+_BCDC6:			jsr	_LCCF8				; subtract bytes per character row from X/A
+			bcc	_BCDC0				; if a result is outside screen RAM CDC0
+			jsr	_LCE38				; perform a copy
+
+_LCDCE:			lda	VDU_TMP3			; set write pointer from read pointer
+			ldx	VDU_TMP1			; 
+			sta	VDU_TOP_SCAN_HI			; 
+			stx	VDU_TOP_SCAN			; 
+			dec	VDU_TMP5			; decrement window height
+			bne	_BCDB0				; and if not zero CDB0
+_LCDDA_EXG_BMPR_CURS_X:	ldx	#<VDU_BITMAP_READ		; point to workspace
+			ldy	#<VDU_T_CURS_X			; point to text column/line
+_LCDDE_EXG2_P3:		lda	#$02				; number of bytes to swap
+			bne	_BCDE8				; exchange (328/9)+Y with (318/9)+X
+								; A=4 to swap X and Y coordinates
+
+;*************** exchange 300/3+Y with 300/3+X ***************************
+
+_LCDE6_EXG4_P3:		lda	#$04				; A =4
+
+;************** exchange (300/300+A)+Y with (300/300+A)+X *****************
+
+_BCDE8:			sta	VDU_TMP1			; store it as loop counter
+
+_BCDEA:			lda	VDU_G_WIN_L,X			; get byte
+			pha					; store it
+			lda	VDU_G_WIN_L,Y			; get byte pointed to by Y
+			sta	VDU_G_WIN_L,X			; put it in 300+X
+			pla					; get back A
+			sta	VDU_G_WIN_L,Y			; put it in 300+Y
+			inx					; increment pointers
+			iny					; 
+			dec	VDU_TMP1			; decrement loop counter
+			bne	_BCDEA				; and if not 0 do it again
+			rts					; and exit
+
+;******** execute upward scroll ******************************************
+
+
+_LCDFF:			jsr	_LCE5B				; exchange line and column cursors with workspace copies
+			ldy	VDU_T_WIN_T			; top of text window
+			sty	VDU_T_CURS_Y			; current text line
+			jsr	_LCF06				; set up display address
+_BCE0B:			jsr	_LCAD4				; add bytes per char. row
+			bpl	_BCE14				; 
+			sec					; 
+			sbc	VDU_MEM_PAGES			; screen RAM size hi byte
+
+_BCE14:			sta	VDU_TMP2			; (&DA)=X/A
+			stx	VDU_TMP1			; 
+			sta	VDU_TMP3			; &DC=A
+			bcc	_BCE22				; 
+_BCE1C:			jsr	_LCE73				; copy line to new position
+								; using (&DA) for read
+								; and (&D8) for write
+			jmp	_LCE2A				; exit
+
+
+_BCE22:			jsr	_LCAD4				; add bytes per char. row
+			bmi	_BCE1C				; if outside screen RAM CE1C
+			jsr	_LCE38				; perform a copy
+_LCE2A:			lda	VDU_TMP3			; 
+			ldx	VDU_TMP1			; 
+			sta	VDU_TOP_SCAN_HI			; 
+			stx	VDU_TOP_SCAN			; 
+			dec	VDU_TMP5			; decrement window height
+			bne	_BCE0B				; CE0B if not 0
+			beq	_LCDDA_EXG_BMPR_CURS_X		; exchange text column/linelse CDDA
+
+
+
+;*********** copy routines ***********************************************
+
+_LCE38:			ldx	VDU_T_WIN_SZ_HI			; text window width hi (bytes)
+			beq	_BCE4D				; if no more than 256 bytes to copy X=0 so CE4D
+
+			ldy	#$00				; Y=0 to set loop counter
+
+_BCE3F:			lda	(VDU_TMP1),Y			; copy 256 bytes
+			sta	(VDU_TOP_SCAN),Y		; 
+			iny					; 
+			bne	_BCE3F				; Till Y=0 again
+			inc	VDU_TOP_SCAN_HI			; increment hi bytes
+			inc	VDU_TMP2			; 
+			dex					; decrement window width
+			bne	_BCE3F				; if not 0 go back and do loop again
+
+_BCE4D:			ldy	VDU_T_WIN_SZ			; text window width lo (bytes)
+			beq	_BCE5A				; if Y=0 CE5A
+
+_BCE52:			dey					; else Y=Y-1
+			lda	(VDU_TMP1),Y			; copy Y bytes
+			sta	(VDU_TOP_SCAN),Y		; 
+			tya					; A=Y
+			bne	_BCE52				; if not 0 CE52
+_BCE5A:			rts					; and exit
+
+_LCE5B:			jsr	_LCDDA_EXG_BMPR_CURS_X				; exchange text column/line with workspace
+			sec					; set carry
+			lda	VDU_T_WIN_B			; bottom margin
+			sbc	VDU_T_WIN_T			; top of text window
+			sta	VDU_TMP5			; store it
+			bne	_LCE6E				; set text column to left hand column
+			pla					; get back return address
+			pla					; 
+			jmp	_LCDDA_EXG_BMPR_CURS_X		; exchange text column/line with workspace
+
+_LCE6E:			lda	VDU_T_WIN_L			; text window left
+			bpl	_BCEE3				; Jump CEE3 always!
+
+_LCE73:			lda	VDU_TMP1			; get back A
+			pha					; push A
+			sec					; set carry
+			lda	VDU_T_WIN_R			; text window right
+			sbc	VDU_T_WIN_L			; text window left
+			sta	VDU_TMP6			; 
+
+			; TODO: can simplify this for 1 BPC!
+
+_BCE7F:			ldy	VDU_BPC				; bytes per character to set loop counter
+
+			dey					; copy loop
+_BCE83:			lda	(VDU_TMP1),Y			; 
+			sta	(VDU_TOP_SCAN),Y		; 
+			dey					; 
+			bpl	_BCE83				; 
+
+			ldx	#$02				; X=2
+_BCE8C:			clc					; clear carry
+			lda	VDU_TOP_SCAN,X			; 
+			adc	VDU_BPC				; bytes per character
+			sta	VDU_TOP_SCAN,X			; 
+			lda	VDU_TOP_SCAN_HI,X		; 
+			adc	#$00				; 
+			bpl	_BCE9E				; if this remains in screen RAM OK
+
+			sec					; else wrap around screen
+			sbc	VDU_MEM_PAGES			; screen RAM size hi byte
+_BCE9E:			sta	VDU_TOP_SCAN_HI,X		; 
+			dex					; X=X-2
+			dex					; 
+			beq	_BCE8C				; if X=0 adjust second set of pointers
+			dec	VDU_TMP6			; decrement window width
+			bpl	_BCE7F				; and if still +ve do it all again
+			pla					; get back A
+			sta	VDU_TMP1			; and store it
+			rts					; then exit
+
+
+
+;*********** clear a line ************************************************
+
+_LCEAC:			lda	VDU_T_CURS_X			; text column
+			pha					; save it
+			jsr	_LCE6E				; set text column to left hand column
+			jsr	_LCF06				; set up display address
+			sec					; set carry
+			lda	VDU_T_WIN_R			; text window right
+			sbc	VDU_T_WIN_L			; text window left
+			sta	VDU_TMP3			; save for later
+			tay					; use for loop counter
+_BCEBF:			lda	VDU_T_BG			; background text colour			
+_BCEC5:			dey					; Y=Y-1 decrementing loop counter
+			sta	(VDU_TOP_SCAN),Y		; store background colour at this point on screen
+			bne	_BCEC5				; if Y<>0 do it again
+			txa					; else A=X (low byte of VDU_TOP_SCAN)
+			clc					; clear carry to add
+			adc	VDU_TMP3			; bytes per character
+			tax					; X=A restoring it
+			lda	VDU_TOP_SCAN_HI			; get hi byte
+			adc	#$00				; Add carry if any
+			bpl	_BCEDA				; if +ve CeDA
+			sec					; else wrap around
+			sbc	VDU_MEM_PAGES			; screen RAM size hi byte
+_BCEDA:			stx	VDU_TOP_SCAN			; restore D8/9
+			sta	VDU_TOP_SCAN_HI			; 
+			pla					; get back A
+_BCEE3:			sta	VDU_T_CURS_X			; restore text column
+_BCEE6:			sec					; set carry
+			rts					; and exit
+
+
+_LCEE8:			ldx	VDU_T_CURS_X			; text column
+			cpx	VDU_T_WIN_L			; text window left
+			bmi	_BCEE6				; if less than left margin return with carry set
+			cpx	VDU_T_WIN_R			; text window right
+			beq	_BCEF7				; if equal to right margin thats OK
+			bpl	_BCEE6				; if greater than right margin return with carry set
+
+_BCEF7:			ldx	VDU_T_CURS_Y			; current text line
+			cpx	VDU_T_WIN_T			; top of text window
+			bmi	_BCEE6				; if less than top margin
+			cpx	VDU_T_WIN_B			; bottom margin
+			beq	_LCF06				; set up display address
+			bpl	_BCEE6				; or greater than bottom margin return with carry set
+			
+			; drop through to display address
+
+;************:set up display address *************************************
+
+; Mode 15 is assumed so just mulx80
+
+_LCF06:			lda	VDU_T_CURS_Y			; current text line
+			asl					; A=A*2
+			tay					; Y=A			
+			clc
+			lda	_MUL80,Y			; get CRTC multiplication table pointer
+			adc	VDU_MEM
+			sta	VDU_TOP_SCAN
+			lda	_MUL80+1,Y
+			adc	VDU_MEM_HI
+			sta	VDU_TOP_SCAN_HI			; &D9=A
+			tay					; 
+			lda	VDU_T_CURS_X			; text column
+			clc					; clear carry
+			adc	VDU_TOP_SCAN			; add to &D8
+			sta	VDU_TOP_SCAN			; and store it
+			sta	VDU_CRTC_CUR			; text cursor 6845 address
+			tax					; X=A
+			tya					; A=Y
+			adc	#$00				; Add carry if set
+			sta	VDU_CRTC_CUR_HI			; text cursor 6845 address
+			bpl	_BCF59				; if less than &800 goto &CF59
+			sec					; else wrap around
+			sbc	VDU_MEM_PAGES			; screen RAM size hi byte
+_BCF59:			sta	VDU_TOP_SCAN_HI			; store in high byte
+			clc					; clear carry
+			rts					; and exit returning cursor HI in X!
+
+;************* Character rendering routine *******************
+_VDU_OUT_CHAR:		
+_VDU_OUT_MODE7:		ldy	#$02				; Y=2
+__mode7_xlate_loop:	cmp	_TELETEXT_CHAR_TAB,Y		; compare with teletext conversion table
+			beq	__mode7_xlate_char		; if equal then CFE9
+			dey					; else Y=Y-1
+			bpl	__mode7_xlate_loop		; and if +ve CFDE
+
+__mode7_out_char:	ldx	#0
+			sta	(VDU_TOP_SCAN,X)		; if not write byte to screen
+			rts					; and exit
+
+__mode7_xlate_char:	lda	_TELETEXT_CHAR_TAB+1,Y		; convert with teletext conversion table
+			bne	__mode7_out_char		; and write it
+
+
+
+_LD486:			ldy	#$28				; copy 4 bytes from 324/7 to 328/B
+_LD488:			ldx	#$24				; 
+_LD48A:			lda	#$04				; 
+
+_LD918:			lda	#$bd				; zero bits 2 and 6 of VDU status
+			jsr	AND_VDU_STATUS				; 
+			jsr	_LC951				; set normal cursor
+			lda	#$0d				; A=&0D
+			rts					; and return
+
+
+;***********copy A bytes from 300,X to 300,Y ***************************
+
+_VDU_VAR_COPY:		sta	VDU_TMP1			; 
+__vdu_var_copy_next:	lda	VDU_G_WIN_L,X			; 
+			sta	VDU_G_WIN_L,Y			; 
+			inx					; 
+			iny					; 
+			dec	VDU_TMP1			; 
+			bne	__vdu_var_copy_next		; 
+			rts					; and return
+
+;*******Set Video ULA control register **entry from VDU routines **************
+				; called from &CBA6, &DD37
+
+VID_ULA_SET:		pha
+			txa
+			pha
+			tya
+			pha
+			tsx
+			lda	$103,X
+			tax
+			lda	#154
+			jsr	OSBYTE
+			pla
+			tay
+			pla
+			tax
+			pla
+			rts					; and return
+
+;****************** Write A to SYSTEM VIA register B *************************
+				; called from &CB6D, &CB73
+_WRITE_SYS_VIA_PORTB:	php					; push flags
+			sei					; disable interupts
+			sta	SYS_VIA_IORB			; write register B from Accumulator
+			plp					; get back flags
+			rts					; and exit
 
 
 
@@ -492,7 +1306,42 @@ _VDU_TABLE_COUNT:		.byte	<0				; VDU  0  - &C511, no parameters
 			.byte	<-2				; VDU 31  - &C787, 2 parameters
 			.byte	<0				; VDU 127 - &CAAC, no parameters
 
+	; TODO make this smaller as a mulx10 and do lsr's?
+_MUL80:
+			.word	0*80
+			.word	1*80
+			.word	2*80
+			.word	3*80
+			.word	4*80
+			.word	5*80
+			.word	6*80
+			.word	7*80
+			.word	8*80
+			.word	9*80
+			.word	10*80
+			.word	11*80
+			.word	12*80
+			.word	13*80
+			.word	14*80
+			.word	15*80
+			.word	16*80
+			.word	17*80
+			.word	18*80
+			.word	19*80
+			.word	20*80
+			.word	21*80
+			.word	22*80
+			.word	23*80
+
+
 
 crtcRegs80:	.byte $7F,$50,$62,$28,$1E,$02,$19,$1B,$93,$12,$72,$13,$30,$00
 
 crtcRegsMode0:	.byte $7F,$50,$62,$28,$26,$00,$20,$22,$01,$07,$67,$08,$06,$00
+
+;*********** TELETEXT CHARACTER CONVERSION TABLE  ************************
+
+_TELETEXT_CHAR_TAB:	.byte	$23				; '#' -> '_'
+			.byte	$5f				; '_' -> '`'
+			.byte	$60				; '`' -> '#'
+			.byte	$23				; '#'

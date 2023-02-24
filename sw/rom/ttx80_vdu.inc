@@ -1,9 +1,18 @@
+.IFNDEF __TTX80_INC
+.DEFINE __TTX80_INC
 
+.IFNDEF __TTX80_ASM
 		.import	my_WRCHV
-		.import MOS_WRCHV_ORG
 
 		.import crtcRegs80
 		.import crtcRegsMode0
+.ENDIF
 
-ULA_CTL_TTX80	= $5B
-ULA_CTL_MODE0	= $9c
+
+MODE15_TEXT_COLS	= 80
+MODE15_TEXT_ROWS	= 24
+MODE15_ULA_CTL		= $5B
+MODE0_ULA_CTL		= $9c
+MOS_WRCHV_ORG		= $E0A4			; for now hard-code vdu vector pass on
+
+.ENDIF

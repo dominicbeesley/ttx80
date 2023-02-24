@@ -17,6 +17,8 @@
 
 		.CODE
 
+		;TODO: use JSR NVWRCH from MOS as (re)entry point
+
 ;------------------------------------------------------------------------------
 ; Commands
 ;------------------------------------------------------------------------------
@@ -93,7 +95,7 @@ cmdTTX80TEST:
 		dex
 		bpl	@l1
 
-		lda	#ULA_CTL_TTX80
+		lda	#MODE15_ULA_CTL
 		sta	sheila_VIDULA_ctl
 
 		ldx	#8
@@ -133,7 +135,7 @@ cmdTTX80TEST:
 		dex
 		bpl	@l2
 
-		lda	#ULA_CTL_MODE0
+		lda	#MODE0_ULA_CTL
 		sta	sheila_VIDULA_ctl
 
 		ldx	#80
