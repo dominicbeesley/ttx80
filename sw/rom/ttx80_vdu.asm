@@ -305,7 +305,7 @@ _VDU_8:			dec	VDU_T_CURS_X			; else decrement text column
 			ldx	VDU_T_CURS_X			; store new text column
 			cpx	VDU_T_WIN_L			; if it is less than text window left
 			bmi	__curs_t_wrap_left		; do wraparound	 cursor to rt of screen 1 line up
-			ldx	VDU_CRTC_CUR			; text cursor 6845 address
+			lda	VDU_CRTC_CUR			; text cursor 6845 address
 			sec					; subtract
 			sbc	VDU_BPC				; bytes per character
 			tax					; put in X
