@@ -819,8 +819,6 @@ _LCBC1_DOCLS:		ldx	#$00				; X=0
 			stx	OSB_HALT_LINES			; paged mode counter
 			stx	VDU_T_CURS_X			; text column
 			stx	VDU_T_CURS_Y			; current text line
-
-			lda	#'a'
 	
 @clslp:			sta	$7800,X
 			sta	$7900,X
