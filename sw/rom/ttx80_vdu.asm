@@ -790,7 +790,7 @@ _LCB33:
 			lda	#<MODE15_TEXT_COLS		; get nuber of bytes per row from table
 			sta	VDU_BPR				; store as bytes per character row
 			lda	#>MODE15_TEXT_COLS
-			stx	VDU_BPR_HI			; bytes per character row
+			sta	VDU_BPR_HI			; bytes per character row
 			lda	#$43				; A=&43
 			jsr	AND_VDU_STATUS			; A=A and &D0:&D0=A
 			lda	#MODE15_ULA_CTL			; get video ULA control setting
