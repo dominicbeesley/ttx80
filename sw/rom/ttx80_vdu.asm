@@ -425,13 +425,13 @@ _LC6AF:			jsr	_LCF06				; set up display address
 _VDU_28:		lda	VDU_QUEUE_6			; get bottom margin
 			cmp	VDU_QUEUE_8			; compare with top margin
 			bcc	_BC758rts			; if bottom margin exceeds top return
-			cmp	#MODE15_TEXT_ROWS		; text window bottom margin maximum
+			cmp	#MODE15_TEXT_ROWS-1		; text window bottom margin maximum
 			beq	_BC70C				; if equal then its OK
 			bcs	_BC758rts			; else exit
 
 _BC70C:			lda	VDU_QUEUE_7			; get right margin
 			tay					; put it in Y
-			cmp	#MODE15_TEXT_COLS		; text window right hand margin maximum
+			cmp	#MODE15_TEXT_COLS-1		; text window right hand margin maximum
 			beq	_BC717				; if equal then OK
 			bcs	_BC758rts			; if greater than maximum exit
 
@@ -617,10 +617,10 @@ _BC9C1:			sta	VDU_G_WIN_L,X			; clear all windows
 			dex					; 
 			bpl	_BC9C1				; until X=&FF
 
-			ldy	#MODE15_TEXT_COLS		; text window right hand margin maximum
+			ldy	#MODE15_TEXT_COLS-1		; text window right hand margin maximum
 			sty	VDU_T_WIN_R			; text window right
 			jsr	_LCA88				; calculate number of bytes in a line
-			ldy	#MODE15_TEXT_ROWS		; text window bottom margin maximum
+			ldy	#MODE15_TEXT_ROWS-1		; text window bottom margin maximum
 			sty	VDU_T_WIN_B			; bottom margin
 
 			lda	#24
@@ -658,7 +658,8 @@ SET_CURS_CHARSCANAX:	stx	VDU_TOP_SCAN			; set &D8/9 from X/A
 			ldx	VDU_CRTC_CUR			; text cursor 6845 address
 			lda	VDU_CRTC_CUR_HI			; text cursor 6845 address
 			ldy	#$0e				; Y=15
-SET_CRTCY_AXDIV8:	and	#$0F				; mode 15 0x3000-0x3FFF
+SET_CRTCY_AXDIV8:	sec
+			sbc	#$78				; mode 15 0x3000-0x3FFF
 			ora	#$30				; EOR with &20
 SET_CRTC_YeqAX:		sty	CRTC_ADDRESS			; write to CRTC address file register
 			sta	CRTC_DATA			; and to relevant address (register 14)
@@ -671,6 +672,7 @@ _LCA88:
 			; mode 15 just store as width			iny					; Y=Y+1
 			lda	#$00				; Y=0
 			sta	VDU_T_WIN_SZ_HI			; text window width hi (bytes)
+			iny
 			sty	VDU_T_WIN_SZ			; text window width lo (bytes)
 			rts					; 
 

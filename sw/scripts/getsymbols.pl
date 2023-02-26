@@ -13,7 +13,7 @@ while (<STDIN>) {
 
 		$addr =~ s/^00([0-9A-F]{4})$/$1/;
 
-		if ($ROMNO && $ROMNO ne "" && $addr =~ /^[89AB][0-9A-F]{3}/i) {
+		if ($ROMNO =~ /[0-9A-F]/i && $addr =~ /^[89AB][0-9A-F]{3}/i) {
 			$addr = $ROMNO . ":" . $addr;
 		}
 
