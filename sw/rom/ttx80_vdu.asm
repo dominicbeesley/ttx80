@@ -1077,26 +1077,24 @@ _LCEAC:			lda	VDU_T_CURS_X			; text column
 			lda	VDU_T_WIN_R			; text window right
 			sbc	VDU_T_WIN_L			; text window left
 			sta	VDU_TMP3			; save for later
-			tay					; use for loop counter
-_BCEBF:			lda	VDU_T_BG			; background text colour			
-_BCEC5:			dey					; Y=Y-1 decrementing loop counter
-			sta	(VDU_TOP_SCAN),Y		; store background colour at this point on screen
-			bne	_BCEC5				; if Y<>0 do it again
-			txa					; else A=X (low byte of VDU_TOP_SCAN)
-			clc					; clear carry to add
-			adc	VDU_TMP3			; bytes per character
-			tax					; X=A restoring it
-			lda	VDU_TOP_SCAN_HI			; get hi byte
-			adc	#$00				; Add carry if any
+			ldy	#0				; 
+_BCEBF:			lda	VDU_T_BG			; background text colour
+_BCEC5:			sta	(VDU_TOP_SCAN),Y		; store background colour at this point on screen
+			inc	VDU_TOP_SCAN
+			bne	_BCEDA
+			inc	VDU_TOP_SCAN_HI			; get hi byte
 			bpl	_BCEDA				; if +ve CeDA
+			lda	VDU_TOP_SCAN_HI			; get hi byte
 			sec					; else wrap around
 			sbc	VDU_MEM_PAGES			; screen RAM size hi byte
-_BCEDA:			stx	VDU_TOP_SCAN			; restore D8/9
 			sta	VDU_TOP_SCAN_HI			; 
+_BCEDA:			dec	VDU_TMP3			; decrement window width
+			bpl	_BCEBF				; ind if not 0 do it all again
 			pla					; get back A
 _BCEE3:			sta	VDU_T_CURS_X			; restore text column
 _BCEE6:			sec					; set carry
 			rts					; and exit
+
 
 
 _LCEE8:			ldx	VDU_T_CURS_X			; text column
