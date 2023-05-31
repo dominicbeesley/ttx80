@@ -78,6 +78,12 @@ cmdMode15:
 		rts		
 
 cmdTTX80TEST:
+		; force mode 0 to ensure palette is ready for switching
+		lda	#22
+		jsr	OSWRCH
+		lda	#0
+		jsr	OSWRCH
+
 		;fill mode 0 screen with characters
 		lda	#$30
 		sta	zp_trans_tmp+1
@@ -100,12 +106,6 @@ cmdTTX80TEST:
 		beq	@lp2
 @sk1:
 
-
-		lda	#22
-		jsr	OSWRCH
-		lda	#7
-		jsr	OSWRCH
-
 		sei
 		; turn off interrupts
 @mainloop:
@@ -119,6 +119,12 @@ cmdTTX80TEST:
 
 		lda	#MODE15_ULA_CTL
 		sta	sheila_VIDULA_ctl
+
+		; latches
+		lda	#4
+		sta	sheila_SYSVIA_orb
+		lda	#5
+		sta	sheila_SYSVIA_orb
 
 		ldx	#8
 		ldy	#0
@@ -160,7 +166,13 @@ cmdTTX80TEST:
 		lda	#MODE0_ULA_CTL
 		sta	sheila_VIDULA_ctl
 
-		ldx	#80
+		; latches
+		lda	#$4
+		sta	sheila_SYSVIA_orb
+		lda	#$D
+		sta	sheila_SYSVIA_orb
+
+		ldx	#120
 		ldy	#0
 		lda	#0
 		clc

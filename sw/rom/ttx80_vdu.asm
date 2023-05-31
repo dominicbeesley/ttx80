@@ -1165,12 +1165,6 @@ _LD486:			ldy	#$28				; copy 4 bytes from 324/7 to 328/B
 _LD488:			ldx	#$24				; 
 _LD48A:			lda	#$04				; 
 
-_LD918:			lda	#$bd				; zero bits 2 and 6 of VDU status
-			jsr	AND_VDU_STATUS				; 
-			jsr	_LC951				; set normal cursor
-			lda	#$0d				; A=&0D
-			rts					; and return
-
 
 ;***********copy A bytes from 300,X to 300,Y ***************************
 
@@ -1182,6 +1176,13 @@ __vdu_var_copy_next:	lda	VDU_G_WIN_L,X			;
 			dec	VDU_TMP1			; 
 			bne	__vdu_var_copy_next		; 
 			rts					; and return
+
+_LD918:			lda	#$bd				; zero bits 2 and 6 of VDU status
+			jsr	AND_VDU_STATUS				; 
+			jsr	_LC951				; set normal cursor
+			lda	#$0d				; A=&0D
+			rts					; and return
+
 
 ;*******Set Video ULA control register **entry from VDU routines **************
 				; called from &CBA6, &DD37
