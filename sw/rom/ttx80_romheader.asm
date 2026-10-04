@@ -203,6 +203,16 @@ svc9_HELP_showbanner:
 		dec	zp_trans_tmp
 		bne	@1
 
+		jsr	PrintNL
+		jsr	PrintSpc
+		jsr	PrintSpc
+		
+		lda	#<utils_name
+		sta	zp_tmp_ptr
+		lda	#>utils_name			; point at name, version, copyright strings
+		sta	zp_tmp_ptr+1
+		jsr	PrintPTR
+
 		jmp	PrintNL
 
 
