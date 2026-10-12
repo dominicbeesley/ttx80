@@ -9,7 +9,7 @@
 .endmacro
 
 .macro		VERSION_STRING
-		.byte	"0.01"
+		.byte	"0.01ib3"
 .endmacro
 
 .macro		VERSION_YEAR

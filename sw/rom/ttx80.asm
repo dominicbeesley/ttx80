@@ -17,34 +17,32 @@
 
 		.CODE
 
-		;TODO: use JSR NVWRCH from MOS as (re)entry point
-
 ;------------------------------------------------------------------------------
 ; Commands
 ;------------------------------------------------------------------------------
 
-brkBadOrgVec:
-		plp
-		M_ERROR	
-		.byte	$FF,"The OSWRCH or OSBYTE vector has already been redirected",0
+; *MODE15 - hook WRCHV and BYTEV. The hooks pass on to NEXT_WRCHV/NEXT_BYTEV
+; (see ttx80_vdu.inc), which is what they must currently point at, otherwise
+; something else has redirected them and we'd skip it by passing straight on.
+; (on an Integra-B these are IBOS's stubs, so those are passed through)
 
 cmdMode15:
 		php
 		sei
 
 		lda	WRCHV
-		cmp	#<MOS_WRCHV_ORG
-		bne	brkBadOrgVec
+		cmp	#<NEXT_WRCHV
+		bne	@bad
 		lda	WRCHV+1
-		cmp	#>MOS_WRCHV_ORG
-		bne	brkBadOrgVec
+		cmp	#>NEXT_WRCHV
+		bne	@bad
 
 		lda	BYTEV
-		cmp	#<MOS_BYTEV_ORG
-		bne	brkBadOrgVec
+		cmp	#<NEXT_BYTEV
+		bne	@bad
 		lda	BYTEV+1
-		cmp	#>MOS_BYTEV_ORG
-		bne	brkBadOrgVec
+		cmp	#>NEXT_BYTEV
+		bne	@bad
 
 
 		lda	#<my_WRCHV
@@ -76,6 +74,24 @@ cmdMode15:
 	
 
 		rts		
+
+		; not as expected - is that because we are already active?
+@bad:		lda	WRCHV
+		cmp	#<EXTVEC_ENTER_WRCHV
+		bne	@other
+		lda	WRCHV+1
+		cmp	#>EXTVEC_ENTER_WRCHV
+		bne	@other
+		lda	EXT_WRCHV+2
+		cmp	zp_mos_curROM
+		bne	@other
+		plp
+		M_ERROR
+		.byte	$FF,"MODE15 is already active",0
+
+@other:		plp
+		M_ERROR
+		.byte	$FF,"OSWRCH or OSBYTE is not the vector this ROM expects",0
 
 cmdTTX80TEST:
 		; force mode 0 to ensure palette is ready for switching

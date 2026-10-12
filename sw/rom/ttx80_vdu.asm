@@ -18,6 +18,7 @@ VDU_TMP4	= zp_vdu_wksp + 3
 VDU_TMP5	= zp_vdu_wksp + 4
 VDU_TMP6	= zp_vdu_wksp + 5
 
+
 .exportzp VDU_STATUS		:= $d0
 
 .exportzp VDU_TOP_SCAN		:= $d8
@@ -101,6 +102,14 @@ CRTC_DATA	:= sheila_CRTC_rw
 
 		.CODE
 
+; Pass on to the next handler in the OSWRCH / OSBYTE chain, i.e. what WRCHV/BYTEV
+; pointed at before *MODE15 (fixed at build time, see NEXT_WRCHV/NEXT_BYTEV in
+; ttx80_vdu.inc). On an Integra-B these are IBOS's stubs, which must not be
+; skipped. JMP to pass a call on, or JSR to call it and get control back.
+; Registers and flags are passed on untouched.
+OSWRCH_OLD:	jmp	NEXT_WRCHV
+OSBYTE_OLD:	jmp	NEXT_BYTEV
+
 my_WRCHV:	pha					; Save all registers
 		txa					
 		pha					
@@ -114,7 +123,7 @@ call_org_vec:
 		pla
 		tax
 		pla
-		jmp	OSWRCH_NV
+		jmp	OSWRCH_OLD
 
 
 __no_intercept:	
@@ -135,9 +144,10 @@ _BE0C8:
 		ora	#$02
 		sta	OSB_OUT_STREAM
 
-		lda	$104,X
+		tsx					; X was lost in _VDUCHR, the stack is now
+		lda	$104,X				; stream, Y, X, A: get the original character
 
-		jsr	OSWRCH_NV			; TODO: pass on to spool/rs423/printer
+		jsr	OSWRCH_OLD			; pass on to spool/rs423/printer (VDU off)
 							; TODO: this won't work correctly for printer though
 							; need to also force printer on if _VDU_CHR returns Cy?
 							; TODO: ask on stardot!
@@ -152,9 +162,57 @@ _BE0C8:
 		pla
 		rts
 
-_VDUCHR:	
+_VDUCHR:
 		ldx	OSB_VDU_QSIZE
-		bne	_VDUCHR_PASSBACK
+		beq	_VDUCHR_NOQ
+		; Parameters are pending. If they are for one of our own multi-byte
+		; codes (22, 28, 31) collect them here rather than leaving it to the
+		; MOS: the MOS would JMP (VDU_JUMPVEC) into this ROM when the queue is
+		; complete, which only works if we are still paged in. With another
+		; ROM in the OSWRCH chain (e.g. IBOS) that ROM is paged in instead
+		jsr	_ck_our_queue
+		bne	_VDUCHR_PASSBACK		; not ours, let the MOS have it
+		ldx	OSB_VDU_QSIZE
+		sta	VDU_QUEUE_8-$FF,X		; store as the MOS does (&224,X)
+		inx
+		stx	OSB_VDU_QSIZE
+		bne	_vdu_q_more			; more parameters to come
+		; got all of the parameters, call the handler as the MOS would
+		bit	VDU_STATUS
+		bmi	_vdu_q_more			; display disabled (VDU 21), ignore
+		bvc	@noedit
+		jsr	_LC568_swapcurs			; cursor editing, as _VDUCHR_MODE15
+		jsr	_LCD6A
+		jsr	_VDU_JUMP
+		jsr	_LC565
+		clc
+		rts
+@noedit:	jsr	_VDU_JUMP
+_vdu_q_more:	clc
+		rts
+
+; Z=1 if VDU_JUMPVEC points at one of our handlers that take parameters,
+; i.e. the pending VDU queue was started by us. A preserved, X corrupted
+_ck_our_queue:	ldx	VDU_JUMPVEC_HI
+		cpx	#>_VDU_22
+		bne	@n28
+		ldx	VDU_JUMPVEC
+		cpx	#<_VDU_22
+		beq	@rts
+@n28:		ldx	VDU_JUMPVEC_HI
+		cpx	#>_VDU_28
+		bne	@n31
+		ldx	VDU_JUMPVEC
+		cpx	#<_VDU_28
+		beq	@rts
+@n31:		ldx	VDU_JUMPVEC_HI
+		cpx	#>_VDU_31
+		bne	@rts
+		ldx	VDU_JUMPVEC
+		cpx	#<_VDU_31
+@rts:		rts
+
+_VDUCHR_NOQ:
 		ldx	VDU_MODE			; are we in mode 15
 		cpx	#15
 		beq	_VDUCHR_MODE15			; jump forwards if we are
@@ -171,7 +229,7 @@ _VDUCHR_PASSBACK:
 		pla
 		tax
 		pla
-		jmp	OSWRCH_NV
+		jmp	OSWRCH_OLD
 
 
 _VDUCHR_MODE15:	; we are now either in mode 15 or about to do a set mode 
@@ -539,9 +597,9 @@ _VDU_22:		lda	VDU_QUEUE_8			; get parameter
 			; a different mode - pass it along
 @sk22:			pha
 			lda	#22
-			jsr	OSWRCH_NV
+			jsr	OSWRCH_OLD
 			pla
-			jmp	OSWRCH_NV
+			jmp	OSWRCH_OLD
 			
 ;********** turn cursor on/off *******************************************
 _LC951:			lda	VDU_CURS_PREV			; get last setting of CRT controller register
@@ -1224,7 +1282,7 @@ my_OSBYTE:		cmp	#133
 			cmp	#132
 			beq	_OSBYTE_132
 
-SKIP_OSBYTE:		jmp	MOS_BYTEV_ORG
+SKIP_OSBYTE:		jmp	OSBYTE_OLD
 
 
 ;*************************************************************************
