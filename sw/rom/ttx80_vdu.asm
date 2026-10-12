@@ -11,6 +11,9 @@ __TTX80_ASM:
 		.export  crtcRegs80
 		.export  crtcRegsMode0
 
+		.import callOldWRCHV
+		.import callOldBYTEV
+
 VDU_TMP1	= zp_vdu_wksp + 0
 VDU_TMP2	= zp_vdu_wksp + 1
 VDU_TMP3	= zp_vdu_wksp + 2
@@ -102,14 +105,6 @@ CRTC_DATA	:= sheila_CRTC_rw
 
 		.CODE
 
-; Pass on to the next handler in the OSWRCH / OSBYTE chain, i.e. what WRCHV/BYTEV
-; pointed at before *MODE15 (fixed at build time, see NEXT_WRCHV/NEXT_BYTEV in
-; ttx80_vdu.inc). On an Integra-B these are IBOS's stubs, which must not be
-; skipped. JMP to pass a call on, or JSR to call it and get control back.
-; Registers and flags are passed on untouched.
-OSWRCH_OLD:	jmp	NEXT_WRCHV
-OSBYTE_OLD:	jmp	NEXT_BYTEV
-
 my_WRCHV:	pha					; Save all registers
 		txa					
 		pha					
@@ -123,7 +118,7 @@ call_org_vec:
 		pla
 		tax
 		pla
-		jmp	OSWRCH_OLD
+		jmp	callOldWRCHV
 
 
 __no_intercept:	
@@ -147,7 +142,7 @@ _BE0C8:
 		tsx					; X was lost in _VDUCHR, the stack is now
 		lda	$104,X				; stream, Y, X, A: get the original character
 
-		jsr	OSWRCH_OLD			; pass on to spool/rs423/printer (VDU off)
+		jsr	callOldWRCHV			; pass on to spool/rs423/printer (VDU off)
 							; TODO: this won't work correctly for printer though
 							; need to also force printer on if _VDU_CHR returns Cy?
 							; TODO: ask on stardot!
@@ -229,7 +224,7 @@ _VDUCHR_PASSBACK:
 		pla
 		tax
 		pla
-		jmp	OSWRCH_OLD
+		jmp	callOldWRCHV
 
 
 _VDUCHR_MODE15:	; we are now either in mode 15 or about to do a set mode 
@@ -597,9 +592,9 @@ _VDU_22:		lda	VDU_QUEUE_8			; get parameter
 			; a different mode - pass it along
 @sk22:			pha
 			lda	#22
-			jsr	OSWRCH_OLD
+			jsr	callOldWRCHV
 			pla
-			jmp	OSWRCH_OLD
+			jmp	callOldWRCHV
 			
 ;********** turn cursor on/off *******************************************
 _LC951:			lda	VDU_CURS_PREV			; get last setting of CRT controller register
@@ -1282,7 +1277,7 @@ my_OSBYTE:		cmp	#133
 			cmp	#132
 			beq	_OSBYTE_132
 
-SKIP_OSBYTE:		jmp	OSBYTE_OLD
+SKIP_OSBYTE:		jmp	callOldBYTEV
 
 
 ;*************************************************************************

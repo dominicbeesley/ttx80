@@ -4,10 +4,10 @@
 		.include "ttx80.inc"
 		.include "ttx80_utils.inc"
 
-		.import 	cmdMode15
-		.import  cmdTTX80TEST
+		.import	cmdMode15
+		.import	cmdTTX80TEST
 
-
+		.import initWksp
 
 		.export	Copyright
 
@@ -52,9 +52,11 @@ str_Dossy:	.byte   "Dossytronics"
 ;* ----------------
 	;TODO make this relative!
 Serv_jump_table:
-		SJTE	$01, svc1_ClaimAbs
 		SJTE	$04, svc4_COMMAND
 		SJTE	$09, svc9_HELP
+		SJTE	$22, svc22_hazel_claim_private
+		SJTE	$24, svc24_hazel_req_private
+		SJTE	$02, svc2_claim_private
 Serv_jump_table_Len	:= 	* - Serv_jump_table	
 
 
@@ -93,16 +95,6 @@ ServiceOutA0:	ldx	zp_mos_curROM
 		pla
 		lda	#0				; Don't pass to other service routines
 		rts
-
-
-; -------------------------------
-; SERVICE 1 - Claim Abs Workspace
-; -------------------------------
-; - We don't need/want abs workspace but will claim vectors here
-;   SRNUKE
-
-svc1_ClaimAbs:
-		jmp	ServiceOut
 
 
 ; -----------------
@@ -207,11 +199,9 @@ svc9_HELP_showbanner:
 		jsr	PrintSpc
 		jsr	PrintSpc
 		
-		lda	#<utils_name
-		sta	zp_tmp_ptr
-		lda	#>utils_name			; point at name, version, copyright strings
-		sta	zp_tmp_ptr+1
-		jsr	PrintPTR
+		ldx	#<str_HELP_KEY
+		ldy	#>str_HELP_KEY			; point at name, version, copyright strings
+		jsr	PrintXY
 
 		jmp	PrintNL
 
@@ -292,6 +282,95 @@ svc4_CMD_exit:	pla					; discard stacked Y
 		jmp	ServiceOut
 
 
+	; TODO: will this crash EEPROMs? check Boobip
+	; may need to run from low memory or use another trampoline 
+	; to safely test?
+
+checkSWRAM:	; check to see if we are running from unlocked SWRAM
+		; if we are return with Cy and A=page to use as workspace
+		lda	#$A5
+		sta	PW_SWRAM + PW_OFFS_TEST
+		inc	PW_SWRAM + PW_OFFS_TEST
+		lda	PW_SWRAM + PW_OFFS_TEST
+		cmp	#$A6
+		beq	@ok
+		clc
+		rts
+@ok:		sec
+		lda	#>PW_SWRAM
+		rts
+
+
+	; TODO: Maybe preemptively claim Hazel 
+	; - how often does Hazel overflow?
+svc24_hazel_req_private:
+		ldx	zp_mos_curROM
+
+		jsr	checkSWRAM			; check for SWRAM (and set)
+		bcs	@out
+		lda	swrom_wksp_tab,X		; check for not set (leave as is)
+		beq	@out
+		
+		; we previously on a previous BREAK allocated go ahead
+		; Y contains caller Y and TOS contains return Y
+		tsx
+		dec	$101,X				; request 1 page
+
+@out:		jmp	ServiceOut
+
+svc22_hazel_claim_private:
+		ldx	zp_mos_curROM
+
+		jsr	checkSWRAM			; check for SWRAM (and set)
+		bcs	@yes
+		lda	swrom_wksp_tab,X		; check for not set (leave as is)
+		beq	@out
+		
+		; we previously on a previous BREAK allocated go ahead
+		; Y contains caller Y and TOS contains return Y
+		tsx
+		cpy	#$DC
+		bcs	@out				; full
+		cpy	#$C0
+		bcs	@ok
+		ldy	#$C0
+		tya
+		sta	$101,X
+@ok:		tya
+		inc	$101,X				; request 1 page
+
+@yes:		ldx	zp_mos_curROM
+		sta	swrom_wksp_tab,X
+		jsr	initWksp
+
+@out:		jmp	ServiceOut
+
+
+svc2_claim_private:
+		ldx	zp_mos_curROM
+
+		jsr	checkSWRAM			; check for SWRAM (and set)
+		bcs	@yes
+		lda	swrom_wksp_tab,X		; check for not set (leave as is)
+		beq	@out
+		and	#$C0
+		cmp	#$C0
+		beq	@out				; already Hazel'd
+		
+		; we previously on a previous BREAK allocated go ahead
+		; Y contains caller Y and TOS contains return Y
+		tya
+		tsx
+		inc	$101,X
+
+@yes:
+		ldx	zp_mos_curROM
+		sta	swrom_wksp_tab,X
+		jsr	initWksp
+
+@out:		jmp	ServiceOut
+
+
 
 
 		.SEGMENT "RODATA"
@@ -301,8 +380,12 @@ tbl_commands:		.word	strMode15, cmdMode15-1, helpMode15
 			.word	strTTX80TEST, cmdTTX80TEST-1, 0
 			.word	0
 
-str_HELP_KEY	:= 	utils_name
+str_HELP_KEY:		.byte	"TTX80", 0
 strMode15:		.byte	"MODE15", 0
-helpMode15:		.byte	"?", 0
+helpMode15:		.byte	"[0|1|PAGE]", 0
 strTTX80TEST:		.byte	"TTX80TEST", 0
 
+
+
+		.SEGMENT "SWRAM_WKSP"
+DUMMY:			.res	256		; reserve dummy workspace
